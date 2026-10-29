@@ -41,7 +41,7 @@ jobs:
       - name: Make Gradle Wrapper Executable
         run: chmod +x gradlew
 
-      - name: Inject Configuration (Name, URL, Version, & Icon)
+      - name: Inject Configuration (Name, URL, Version, Icon, & AndroidX)
         env:
           APP_NAME: ${{ github.event.inputs.app_name }}
           TARGET_URL: ${{ github.event.inputs.target_url }}
@@ -84,10 +84,10 @@ jobs:
                       with open(path, 'r', encoding='utf-8') as f:
                           content = f.read()
                       if 'https://placeholder.url' in content:
-                          new_content = content.replace('https://placeholder.url', target_url)
-                          with open(path, 'w', encoding='utf-8') as f:
-                              f.write(new_content)
-                          print(f'Successfully injected URL into {path}')
+                        new_content = content.replace('https://placeholder.url', target_url)
+                        with open(path, 'w', encoding='utf-8') as f:
+                            f.write(new_content)
+                        print(f'Successfully injected URL into {path}')
           "
 
           echo "=== 4. Downloading and Resizing App Icon ==="
@@ -117,10 +117,23 @@ jobs:
             "
           fi
 
+          echo "=== 5. Enabling AndroidX Properties ==="
+          PROP_FILE="gradle.properties"
+          if [ ! -f "$PROP_FILE" ]; then
+            touch "$PROP_FILE"
+          fi
+          if ! grep -q "android.useAndroidX" "$PROP_FILE"; then
+            echo "android.useAndroidX=true" >> "$PROP_FILE"
+          fi
+          if ! grep -q "android.enableJetifier" "$PROP_FILE"; then
+            echo "android.enableJetifier=true" >> "$PROP_FILE"
+          fi
+          echo "AndroidX properties enabled successfully!"
+
       - name: Accept Android Licenses & Build APK
         run: |
           yes | sdkmanager --licenses || true
-          ./gradlew assembleRelease --stacktrace
+          ./gradlew assembleRelease
 
       - name: Upload Compiled APK Artifact
         uses: actions/upload-artifact@v4
