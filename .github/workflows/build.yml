@@ -1,0 +1,129 @@
+name: Web2APK Automated Builder
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: 'Nama Aplikasi'
+        required: true
+        default: 'ReyCode App'
+      target_url:
+        description: 'URL Website / API'
+        required: true
+        default: 'https://api.reycode.web.id'
+      app_version:
+        description: 'Versi Aplikasi (contoh: 1.0.0)'
+        required: true
+        default: '1.0.0'
+      icon_url:
+        description: 'URL Ikon Aplikasi (PNG/JPG)'
+        required: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Python & Pillow (Image Resizing)
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install Pillow
+
+      - name: Make Gradle Wrapper Executable
+        run: chmod +x gradlew
+
+      - name: Inject Configuration (Name, URL, Version, & Icon)
+        env:
+          APP_NAME: ${{ github.event.inputs.app_name }}
+          TARGET_URL: ${{ github.event.inputs.target_url }}
+          APP_VERSION: ${{ github.event.inputs.app_version }}
+          ICON_URL: ${{ github.event.inputs.icon_url }}
+        run: |
+          echo "=== 1. Updating App Name ==="
+          STRINGS_FILE="app/src/main/res/values/strings.xml"
+          if [ -f "$STRINGS_FILE" ]; then
+            python3 -c "
+            import xml.etree.ElementTree as ET
+            tree = ET.parse('$STRINGS_FILE')
+            root = tree.getroot()
+            for elem in root.findall('string'):
+                if elem.get('name') == 'app_name':
+                    elem.text = '$APP_NAME'
+            tree.write('$STRINGS_FILE', encoding='utf-8', xml_declaration=True)
+            "
+            echo "App Name changed to: $APP_NAME"
+          fi
+
+          echo "=== 2. Updating Version in build.gradle ==="
+          BUILD_GRADLE="app/build.gradle"
+          if [ -f "$BUILD_GRADLE" ]; then
+            sed -i 's/versionName ".*"/versionName "'$APP_VERSION'"/g' "$BUILD_GRADLE"
+            VERSION_CODE=$(echo "$APP_VERSION" | awk -F. '{print ($1*10000 + $2*100 + $3)}')
+            if [ -z "$VERSION_CODE" ] || [ "$VERSION_CODE" -eq 0 ]; then VERSION_CODE=1; fi
+            sed -i 's/versionCode [0-9]*/versionCode '$VERSION_CODE'/g' "$BUILD_GRADLE"
+            echo "Version updated to: $APP_VERSION (Code: $VERSION_CODE)"
+          fi
+
+          echo "=== 3. Injecting Target URL into MainActivity ==="
+          python3 -c "
+          import os
+          target_url = '$TARGET_URL'
+          for root_dir, dirs, files in os.walk('app/src/main'):
+              for file in files:
+                  if file.endswith(('.java', '.kt')):
+                      path = os.path.join(root_dir, file)
+                      with open(path, 'r', encoding='utf-8') as f:
+                          content = f.read()
+                      if 'https://placeholder.url' in content:
+                          new_content = content.replace('https://placeholder.url', target_url)
+                          with open(path, 'w', encoding='utf-8') as f:
+                              f.write(new_content)
+                          print(f'Successfully injected URL into {path}')
+          "
+
+          echo "=== 4. Downloading and Resizing App Icon ==="
+          if [ ! -z "$ICON_URL" ]; then
+            curl -sL "$ICON_URL" -o app_icon.png
+            python3 -c "
+            from PIL import Image
+            import os
+            try:
+                img = Image.open('app_icon.png')
+                sizes = {
+                    'mipmap-mdpi': 48,
+                    'mipmap-hdpi': 72,
+                    'mipmap-xhdpi': 96,
+                    'mipmap-xxhdpi': 144,
+                    'mipmap-xxxhdpi': 192
+                }
+                for folder, size in sizes.items():
+                    path = f'app/src/main/res/{folder}'
+                    os.makedirs(path, exist_ok=True)
+                    resized = img.resize((size, size), Image.Resampling.LANCZOS)
+                    resized.save(os.path.join(path, 'ic_launcher.png'))
+                    resized.save(os.path.join(path, 'ic_launcher_round.png'))
+                print('All icons resized successfully!')
+            except Exception as e:
+                print(f'Failed to process icon: {e}')
+            "
+          fi
+
+      - name: Accept Android Licenses & Build APK
+        run: |
+          yes | sdkmanager --licenses || true
+          ./gradlew assembleRelease
+
+      - name: Upload Compiled APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: compiled-apk
+          path: app/build/outputs/apk/release/app-release.apk
