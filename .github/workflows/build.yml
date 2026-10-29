@@ -90,7 +90,7 @@ jobs:
                         print(f'Successfully injected URL into {path}')
           "
 
-          echo "=== 4. Downloading and Resizing App Icon ==="
+          echo "=== 4. Downloading, Cleaning, and Resizing App Icon ==="
           if [ ! -z "$ICON_URL" ]; then
             curl -sL "$ICON_URL" -o app_icon.png
             python3 -c "
@@ -108,10 +108,16 @@ jobs:
                 for folder, size in sizes.items():
                     path = f'app/src/main/res/{folder}'
                     os.makedirs(path, exist_ok=True)
+                    
+                    # Hapus ikon lama (baik .png, .webp, dll) untuk cegah Duplicate Resources
+                    for filename in os.listdir(path):
+                        if filename.startswith('ic_launcher'):
+                            os.remove(os.path.join(path, filename))
+                    
                     resized = img.resize((size, size), Image.Resampling.LANCZOS)
                     resized.save(os.path.join(path, 'ic_launcher.png'))
                     resized.save(os.path.join(path, 'ic_launcher_round.png'))
-                print('All icons resized successfully!')
+                print('All old icons cleaned and new icons resized successfully!')
             except Exception as e:
                 print(f'Failed to process icon: {e}')
             "
