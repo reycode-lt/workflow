@@ -96,7 +96,14 @@ jobs:
             python3 -c "
             from PIL import Image
             import os
+            import shutil
             try:
+                # Hapus folder adaptive icon agar Android tidak memaksa pakai ikon bawaan/default
+                anydpi_path = 'app/src/main/res/mipmap-anydpi-v26'
+                if os.path.exists(anydpi_path):
+                    shutil.rmtree(anydpi_path)
+                    print('Adaptive icon folder removed successfully!')
+
                 img = Image.open('app_icon.png')
                 sizes = {
                     'mipmap-mdpi': 48,
@@ -117,7 +124,7 @@ jobs:
                     resized = img.resize((size, size), Image.Resampling.LANCZOS)
                     resized.save(os.path.join(path, 'ic_launcher.png'))
                     resized.save(os.path.join(path, 'ic_launcher_round.png'))
-                print('All old icons cleaned and new icons resized successfully!')
+                print('All adaptive icons cleaned, old assets removed, and new custom icons resized successfully!')
             except Exception as e:
                 print(f'Failed to process icon: {e}')
             "
