@@ -83,21 +83,37 @@ jobs:
             echo "Version updated to: $APP_VERSION (Code: $VERSION_CODE)"
           fi
 
-          echo "=== [3/5] Injecting Target URL into MainActivity ==="
+          echo "=== [3/5] Injecting Target URL into MainActivity (Smart Regex) ==="
           python3 -c "
           import os
+          import re
           target_url = '$TARGET_URL'
+          injected = False
           for root_dir, dirs, files in os.walk('app/src/main'):
               for file in files:
                   if file.endswith(('.java', '.kt')):
                       path = os.path.join(root_dir, file)
                       with open(path, 'r', encoding='utf-8') as f:
                           content = f.read()
-                      if 'https://placeholder.url' in content:
-                        new_content = content.replace('https://placeholder.url', target_url)
-                        with open(path, 'w', encoding='utf-8') as f:
-                            f.write(new_content)
-                        print(f'Successfully injected URL into {path}')
+                      
+                      # Timpa variabel applicationUrl = \"...\" dengan URL target user secara otomatis
+                      new_content, count = re.subn(r'private\s+val\s+applicationUrl\s*=\s*[\"\'][^\"\']*[\"\']', f'private val applicationUrl = \"{target_url}\"', content)
+                      if count > 0:
+                          with open(path, 'w', encoding='utf-8') as f:
+                              f.write(new_content)
+                          print(f'Successfully injected applicationUrl into {path} (Replaced {count} occurrences)')
+                          injected = True
+                      
+                      # Fallback cadangan jika pakai loadUrl biasa
+                      new_content2, count2 = re.subn(r'loadUrl\s*\(\s*[\"\'][^\"\']*[\"\']\s*\)', f'loadUrl(\"{target_url}\")', content)
+                      if count2 > 0:
+                          with open(path, 'w', encoding='utf-8') as f:
+                              f.write(new_content2)
+                          print(f'Successfully injected loadUrl into {path}')
+                          injected = True
+                          
+          if not injected:
+              print('Warning: applicationUrl or loadUrl not found!')
           "
 
           echo "=== [4/5] Downloading, Cleaning, and Resizing App Icon ==="
